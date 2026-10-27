@@ -799,6 +799,67 @@ a {
   justify-content: flex-end;
 }
 
+/* --- Lockers --- */
+
+.locker-card-availability {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--good);
+}
+
+.tier-section-title {
+  margin: 0 0 16px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.tier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.tier-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.tier-btn:hover {
+  border-color: var(--primary);
+}
+
+.tier-btn-selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.tier-btn-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.tier-btn-price {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.locker-availability-note {
+  margin: 16px 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 /* --- Auth forms --- */
 
 .auth-page {
@@ -1059,19 +1120,30 @@ a {
   margin-bottom: 24px;
 }
 
-.admin-tabs a {
+/* Shared by route-based tabs (admin, <a>) and state-based tabs (My bookings,
+   <button> — there's no URL per tab, just local state). */
+.admin-tabs a,
+.admin-tabs button {
   padding: 10px 0;
   font-size: 0.92rem;
   font-weight: 600;
   color: var(--text-muted);
   border-bottom: 2px solid transparent;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  cursor: pointer;
+  font-family: var(--font-body);
 }
 
-.admin-tabs a:hover {
+.admin-tabs a:hover,
+.admin-tabs button:hover {
   color: var(--text);
 }
 
-.admin-tabs a.active {
+.admin-tabs a.active,
+.admin-tabs button.active {
   color: var(--text);
   border-bottom-color: var(--primary);
 }

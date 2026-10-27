@@ -10,7 +10,17 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const { User, Resource, Trainer, Booking, BookingSlot } = require('../src/models');
+const {
+  User,
+  Resource,
+  Trainer,
+  Booking,
+  BookingSlot,
+  LockerOffering,
+  LockerUnit,
+  LockerBooking,
+} = require('../src/models');
+const { ensureUnits } = require('../src/services/lockerService');
 
 const PASSWORD = 'password123';
 
@@ -215,6 +225,15 @@ const RESOURCES = [
   },
 ];
 
+const LOCKER_OFFERINGS = [
+  {
+    name: 'Storage Lockers',
+    description: 'A secure personal locker for your bag, valuables, or gym kit.',
+    capacity: 20,
+    pricing: { day: 500, month: 4000, year: 35000 },
+  },
+];
+
 async function main() {
   if (process.env.NODE_ENV === 'production') {
     console.error('Refusing to seed a production database.');
@@ -236,6 +255,9 @@ async function main() {
         Resource.deleteMany({}),
         Booking.deleteMany({}),
         BookingSlot.deleteMany({}),
+        LockerOffering.deleteMany({}),
+        LockerUnit.deleteMany({}),
+        LockerBooking.deleteMany({}),
       ]);
       console.log('Cleared existing data');
     }
@@ -288,8 +310,25 @@ async function main() {
       );
     }
 
+    for (const offering of LOCKER_OFFERINGS) {
+      const stored = await LockerOffering.findOneAndUpdate(
+        { name: offering.name },
+        { $set: { ...offering, ownerId: users.staff._id, isActive: true } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+      const { created } = await ensureUnits({ offeringId: stored._id, capacity: stored.capacity });
+      console.log(
+        `  locker    ${stored.name.padEnd(24)} cap ${String(stored.capacity).padStart(2)}  ` +
+          `${(stored.pricing.day / 100).toFixed(2)}/${(stored.pricing.month / 100).toFixed(2)}/` +
+          `${(stored.pricing.year / 100).toFixed(2)} ${stored.currency.toUpperCase()}  ` +
+          `(${created} unit(s) newly provisioned)`
+      );
+    }
+
     console.log(`\nAll seeded accounts use the password: ${PASSWORD}`);
-    console.log('Try: GET /api/resources, GET /api/trainers, then GET /api/resources/<id>/availability');
+    console.log(
+      'Try: GET /api/resources, GET /api/trainers, GET /api/lockers, then GET /api/resources/<id>/availability'
+    );
   } finally {
     await mongoose.disconnect();
   }

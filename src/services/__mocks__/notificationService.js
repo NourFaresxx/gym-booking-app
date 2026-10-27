@@ -16,14 +16,26 @@ const send = record('send');
 const bookingConfirmed = record('bookingConfirmed');
 const bookingCancelled = record('bookingCancelled');
 const bookingExpired = record('bookingExpired');
+const lockerBookingConfirmed = record('lockerBookingConfirmed');
+const lockerBookingCancelled = record('lockerBookingCancelled');
+const lockerBookingExpired = record('lockerBookingExpired');
 
 const isSmtpConfigured = jest.fn(() => false);
 
+const ALL_MOCKS = [
+  send,
+  bookingConfirmed,
+  bookingCancelled,
+  bookingExpired,
+  lockerBookingConfirmed,
+  lockerBookingCancelled,
+  lockerBookingExpired,
+  isSmtpConfigured,
+];
+
 function resetNotifications() {
   sent.length = 0;
-  for (const fn of [send, bookingConfirmed, bookingCancelled, bookingExpired, isSmtpConfigured]) {
-    fn.mockClear();
-  }
+  for (const fn of ALL_MOCKS) fn.mockClear();
 }
 
 /** Everything "sent" so far, optionally filtered by notification kind. */
@@ -37,6 +49,9 @@ module.exports = {
   bookingConfirmed,
   bookingCancelled,
   bookingExpired,
+  lockerBookingConfirmed,
+  lockerBookingCancelled,
+  lockerBookingExpired,
   resetNotifications,
   sentNotifications,
 };

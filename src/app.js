@@ -11,6 +11,8 @@ const authRoutes = require('./routes/authRoutes');
 const resourceRoutes = require('./routes/resourceRoutes');
 const trainerRoutes = require('./routes/trainerRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
+const lockerRoutes = require('./routes/lockerRoutes');
+const lockerBookingRoutes = require('./routes/lockerBookingRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
@@ -75,6 +77,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/trainers', trainerRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/lockers', lockerRoutes);
+app.use('/api/locker-bookings', lockerBookingRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
 app.use(notFound);

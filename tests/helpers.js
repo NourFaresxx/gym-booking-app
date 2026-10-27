@@ -4,6 +4,8 @@ const app = require('../src/app');
 const User = require('../src/models/User');
 const Resource = require('../src/models/Resource');
 const Trainer = require('../src/models/Trainer');
+const LockerOffering = require('../src/models/LockerOffering');
+const { ensureUnits } = require('../src/services/lockerService');
 const { signAccessToken } = require('../src/utils/tokens');
 
 let uniqueCounter = 0;
@@ -52,6 +54,22 @@ async function makeTrainer(overrides = {}) {
   });
 }
 
+/** Creates a locker offering and provisions its units, ready to rent. */
+async function makeLockerOffering({ ownerId, capacity = 3, ...overrides } = {}) {
+  const owner = ownerId || (await makeUser({ role: 'staff' })).user._id;
+  const offering = await LockerOffering.create({
+    name: 'Storage Lockers',
+    description: 'A locker offering created for tests.',
+    capacity,
+    pricing: { day: 500, month: 4000, year: 35000 },
+    currency: 'usd',
+    ownerId: owner,
+    ...overrides,
+  });
+  await ensureUnits({ offeringId: offering._id, capacity: offering.capacity });
+  return offering;
+}
+
 /** An agent with the Authorization header pre-applied. */
 function as(token) {
   const authed = (method) => (url) =>
@@ -73,4 +91,14 @@ function futureSlot({ days = 2, hourUtc = 10 } = {}) {
   return date;
 }
 
-module.exports = { app, request, makeUser, makeResource, makeTrainer, as, futureSlot, uniqueEmail };
+module.exports = {
+  app,
+  request,
+  makeUser,
+  makeResource,
+  makeTrainer,
+  makeLockerOffering,
+  as,
+  futureSlot,
+  uniqueEmail,
+};

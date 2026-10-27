@@ -5,23 +5,7 @@ import StripeCheckoutForm from '../components/StripeCheckoutForm';
 import ErrorMessage from '../components/ErrorMessage';
 import { isStripeConfigured } from '../lib/stripe';
 import { formatDateTime, formatMoney } from '../lib/formatters';
-
-/** mm:ss countdown to `deadline`, ticking every second; null once it passes. */
-function useCountdown(deadline) {
-  const [remainingMs, setRemainingMs] = useState(() => (deadline ? deadline - Date.now() : null));
-
-  useEffect(() => {
-    if (!deadline) return;
-    const interval = setInterval(() => setRemainingMs(deadline - Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [deadline]);
-
-  if (remainingMs === null || remainingMs <= 0) return null;
-  const totalSeconds = Math.floor(remainingMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-}
+import { useCountdown } from '../lib/useCountdown';
 
 export default function CheckoutPage() {
   const location = useLocation();
