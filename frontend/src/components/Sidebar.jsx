@@ -27,6 +27,9 @@ export default function Sidebar() {
         <NavLink to="/self-care" className={linkClass}>
           Self Care
         </NavLink>
+        <NavLink to="/lockers" className={linkClass}>
+          Lockers
+        </NavLink>
         <NavLink to="/trainers" className={linkClass}>
           Trainers
         </NavLink>

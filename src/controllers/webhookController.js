@@ -2,7 +2,11 @@ const Booking = require('../models/Booking');
 const Resource = require('../models/Resource');
 const User = require('../models/User');
 const WebhookEvent = require('../models/WebhookEvent');
+const LockerBooking = require('../models/LockerBooking');
+const LockerOffering = require('../models/LockerOffering');
+const LockerUnit = require('../models/LockerUnit');
 const { releaseSlot } = require('../services/slotService');
+const { releaseUnit } = require('../services/lockerService');
 const notifications = require('../services/notificationService');
 const { constructWebhookEvent, refundPaymentIntent } = require('../services/paymentService');
 
@@ -62,7 +66,13 @@ async function dispatch(event) {
   }
 }
 
+function isLockerIntent(intent) {
+  return intent.metadata?.bookingType === 'locker';
+}
+
 async function onPaymentSucceeded(intent) {
+  if (isLockerIntent(intent)) return onLockerPaymentSucceeded(intent);
+
   const booking = await findBooking(intent);
   if (!booking) return;
 
@@ -111,6 +121,8 @@ async function onPaymentSucceeded(intent) {
 }
 
 async function onPaymentFailed(intent, reason) {
+  if (isLockerIntent(intent)) return onLockerPaymentFailed(intent, reason);
+
   const booking = await findBooking(intent);
   if (!booking) return;
 
@@ -140,32 +152,34 @@ async function onChargeRefunded(charge) {
   const paymentIntentId = charge.payment_intent;
   if (!paymentIntentId) return;
 
-  // Covers refunds issued from the Stripe dashboard, which this API never saw.
+  // Covers refunds issued from the Stripe dashboard, which this API never
+  // saw. Tried against class bookings first (unchanged from before lockers
+  // existed), then locker rentals — the lookup is just "which of our own
+  // collections has this payment intent id", not something the charge
+  // itself tells us.
   const booking = await Booking.findOneAndUpdate(
     { stripePaymentIntentId: paymentIntentId, paymentStatus: 'paid' },
     { paymentStatus: 'refunded' },
     { new: true }
   );
-  if (!booking) return;
+  if (booking) {
+    // A dashboard refund implies the booking shouldn't stand, so release the
+    // seat too — again conditioned on the transition to keep it exactly-once.
+    const cancelled = await Booking.findOneAndUpdate(
+      { _id: booking._id, status: { $in: ['pending', 'confirmed'] } },
+      { status: 'cancelled', cancelledAt: new Date(), cancelReason: 'refunded', expiresAt: null },
+      { new: true }
+    );
+    if (!cancelled) return;
 
-  // A dashboard refund implies the booking shouldn't stand, so release the
-  // seat too — again conditioned on the transition to keep it exactly-once.
-  const cancelled = await Booking.findOneAndUpdate(
-    { _id: booking._id, status: { $in: ['pending', 'confirmed'] } },
-    {
-      status: 'cancelled',
-      cancelledAt: new Date(),
-      cancelReason: 'refunded',
-      expiresAt: null,
-    },
-    { new: true }
-  );
-  if (!cancelled) return;
+    await releaseSlot({ resourceId: cancelled.resourceId, slotStart: cancelled.slotStart });
 
-  await releaseSlot({ resourceId: cancelled.resourceId, slotStart: cancelled.slotStart });
+    const { user, resourceName } = await loadContext(cancelled);
+    await notifications.bookingCancelled({ user, booking: cancelled, resourceName, refunded: true });
+    return;
+  }
 
-  const { user, resourceName } = await loadContext(cancelled);
-  await notifications.bookingCancelled({ user, booking: cancelled, resourceName, refunded: true });
+  return onLockerChargeRefunded(paymentIntentId);
 }
 
 /** Prefers the id we stored, falling back to the metadata Stripe echoes back. */
@@ -187,6 +201,118 @@ async function loadContext(booking) {
     Resource.findById(booking.resourceId).select('name'),
   ]);
   return { user, resourceName: resource?.name || 'your booking' };
+}
+
+// --- Locker rentals ---
+// Mirrors the class-booking handlers above field-for-field (same
+// conditional-transition-for-exactly-once reasoning, same late-payment
+// refund logic), adapted to LockerBooking's shape: a unit instead of a slot,
+// and releaseUnit instead of releaseSlot.
+
+async function onLockerPaymentSucceeded(intent) {
+  const booking = await findLockerBooking(intent);
+  if (!booking) return;
+
+  const confirmed = await LockerBooking.findOneAndUpdate(
+    { _id: booking._id, status: 'pending' },
+    { status: 'confirmed', paymentStatus: 'paid', stripePaymentIntentId: intent.id, expiresAt: null },
+    { new: true }
+  );
+
+  if (confirmed) {
+    const context = await loadLockerContext(confirmed);
+    await notifications.lockerBookingConfirmed({ ...context, booking: confirmed });
+    return;
+  }
+
+  // Same situation as a late class-booking payment: the unit this rental
+  // held has already been released (expired or cancelled), so it may have
+  // been rented out again — confirming now would double-book it. Refund
+  // instead of confirming.
+  if (['expired', 'cancelled'].includes(booking.status) && booking.paymentStatus !== 'refunded') {
+    try {
+      const refund = await refundPaymentIntent({
+        paymentIntentId: intent.id,
+        idempotencyKey: `locker_refund_${booking._id}`,
+      });
+      await LockerBooking.findByIdAndUpdate(booking._id, {
+        paymentStatus: 'refunded',
+        stripeRefundId: refund.id,
+      });
+      console.warn(
+        `Refunded late payment for ${booking.status} locker rental ${booking._id} (intent ${intent.id})`
+      );
+    } catch (err) {
+      throw new Error(
+        `Failed to refund late payment for locker rental ${booking._id}: ${err.message}`
+      );
+    }
+  }
+}
+
+async function onLockerPaymentFailed(intent, reason) {
+  const booking = await findLockerBooking(intent);
+  if (!booking) return;
+
+  const cancelled = await LockerBooking.findOneAndUpdate(
+    { _id: booking._id, status: 'pending' },
+    {
+      status: 'cancelled',
+      paymentStatus: 'unpaid',
+      cancelledAt: new Date(),
+      cancelReason: reason,
+      expiresAt: null,
+    },
+    { new: true }
+  );
+  if (!cancelled) return;
+
+  await releaseUnit({ unitId: cancelled.unitId });
+
+  const context = await loadLockerContext(cancelled);
+  await notifications.lockerBookingCancelled({ ...context, booking: cancelled, refunded: false });
+}
+
+async function onLockerChargeRefunded(paymentIntentId) {
+  const booking = await LockerBooking.findOneAndUpdate(
+    { stripePaymentIntentId: paymentIntentId, paymentStatus: 'paid' },
+    { paymentStatus: 'refunded' },
+    { new: true }
+  );
+  if (!booking) return;
+
+  const cancelled = await LockerBooking.findOneAndUpdate(
+    { _id: booking._id, status: { $in: ['pending', 'confirmed'] } },
+    { status: 'cancelled', cancelledAt: new Date(), cancelReason: 'refunded', expiresAt: null },
+    { new: true }
+  );
+  if (!cancelled) return;
+
+  await releaseUnit({ unitId: cancelled.unitId });
+
+  const context = await loadLockerContext(cancelled);
+  await notifications.lockerBookingCancelled({ ...context, booking: cancelled, refunded: true });
+}
+
+async function findLockerBooking(intent) {
+  const byIntent = await LockerBooking.findOne({ stripePaymentIntentId: intent.id });
+  if (byIntent) return byIntent;
+
+  const bookingId = intent.metadata?.bookingId;
+  if (!bookingId) {
+    console.warn(`Webhook intent ${intent.id} has no bookingId metadata`);
+    return null;
+  }
+  return LockerBooking.findById(bookingId);
+}
+
+async function loadLockerContext(booking) {
+  const [user, offering, unit] = await Promise.all([
+    User.findById(booking.userId).select('name email'),
+    LockerOffering.findById(booking.offeringId).select('name'),
+    LockerUnit.findById(booking.unitId).select('label'),
+  ]);
+  return { user, offeringName: offering?.name || 'your locker rental', unitLabel: unit?.label };
 }
 
 module.exports = { handleStripeWebhook };

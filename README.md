@@ -16,7 +16,8 @@ concurrency-safe booking that cannot overbook a slot.
 - **Notifications**: confirmation / cancellation / expiry emails over SMTP, logged instead when SMTP isn't configured
 - **Validation**: Zod schemas on every write endpoint
 - **Docs**: OpenAPI 3 at `/api/docs`, raw spec at `/api/openapi.json`
-- **Tests**: 151 Jest + Supertest tests, including concurrency, webhook idempotency and capacity-release coverage
+- **Lockers**: day/month/year rentals from a pool of interchangeable physical units, race-free on a different mechanism than class booking (see "Why this exists")
+- **Tests**: 196 Jest + Supertest tests, including concurrency, webhook idempotency and capacity-release coverage
 
 ## Stack
 
@@ -162,6 +163,43 @@ not a separate booking subsystem. `GET /api/trainers/:id` returns the profile
 plus their active classes in one response, so the frontend's trainer page
 doesn't have to filter the full resource list client-side.
 
+### Lockers: a different overbooking problem, a different fix
+
+A class booking reserves a point in time (a slot); a locker rental reserves a
+*span* — a day, a month, or a year, starting whenever the customer checks
+out. That's not a smaller version of the slot problem, it's a different one,
+and `BookingSlot`'s counter-per-exact-timestamp trick doesn't apply: there's
+no shared instant for two rentals to collide on.
+
+The fix is the same *idea* as `BookingSlot` — one atomic conditional update
+is what actually prevents the race, not a transaction — aimed at a different
+condition. Each physical locker is its own `LockerUnit` document carrying
+`occupiedUntil`. Claiming one is:
+
+```js
+LockerUnit.findOneAndUpdate(
+  { offeringId, $or: [{ occupiedUntil: null }, { occupiedUntil: { $lte: now } }] },
+  { $set: { occupiedUntil: rentalEnd } }
+)
+```
+
+"Is this unit free" is "is its occupied-until date in the past", not "is a
+counter under a limit" — but it's still one atomic update on one document, so
+two concurrent rentals racing for the last free unit still can't both win.
+`tests/lockers.test.js` fires simultaneous rentals at a 3-unit and a 1-unit
+pool, same shape as the class-booking concurrency test.
+
+Everything downstream reuses what classes already built rather than
+duplicating it: the same pending → confirmed/expired → completed lifecycle,
+the same Stripe webhook endpoint (routed by a `bookingType: 'locker'` tag in
+the payment intent's metadata, with the class-booking code paths completely
+unmodified), the same maintenance sweeper, the same cancellation/refund
+logic. `LockerBooking` is still its own model rather than extra fields bolted
+onto `Booking` — a rental's shape (`unitId`, `tier`, `rentalStart`/`rentalEnd`)
+doesn't overlap cleanly with a class booking's (`resourceId`, `slotStart`),
+and conflating them would mean every query on one carries fields that only
+make sense for the other.
+
 ## Project structure
 
 ```
@@ -189,11 +227,14 @@ frontend/       # React + Vite customer web app (see below)
   (`/`) and Self Care (`/self-care`) are the same `Resource` collection split
   by a `category` field (`classes` vs. `self-care`) — a spa session and a
   CrossFit class are the same document shape, just grouped differently.
+- **Lockers** (`/lockers`): day/month/year rentals, same checkout flow as a
+  class, under `My bookings → Lockers`.
 - **Admin flow** (`/admin`, staff/admin only — the nav link only appears for
-  those roles, and the route redirects anyone else back to Browse): a
+  those roles, and the route redirects anyone else back to Classes): a
   dashboard (bookings, revenue, refunds, seat utilisation, top classes by
-  revenue), and CRUD for classes and trainers, including reactivating
-  something you'd previously deactivated.
+  revenue), and CRUD for classes, trainers, and locker offerings, including
+  reactivating something you'd previously deactivated. Locker revenue isn't
+  in the dashboard yet — see Notes and limitations.
 
 The admin UI's "show inactive" toggle depends on a backend addition that
 isn't obvious from the API routes alone: `GET /resources` and `GET
@@ -249,6 +290,16 @@ Notes:
 | `GET` | `/api/bookings/:id` | owner, staff, admin |
 | `PATCH` | `/api/bookings/:id/cancel` | owner, staff, admin |
 | `GET` | `/api/bookings` | staff, admin |
+| `GET` | `/api/lockers` | public |
+| `GET` | `/api/lockers/:id` | public |
+| `POST` | `/api/lockers` | staff, admin |
+| `PATCH` | `/api/lockers/:id` | owner, admin |
+| `DELETE` | `/api/lockers/:id` | owner, admin |
+| `POST` | `/api/locker-bookings` | authenticated |
+| `GET` | `/api/locker-bookings/me` | authenticated |
+| `GET` | `/api/locker-bookings/:id` | owner, staff, admin |
+| `PATCH` | `/api/locker-bookings/:id/cancel` | owner, staff, admin |
+| `GET` | `/api/locker-bookings` | staff, admin |
 | `GET` | `/api/analytics/overview` | staff, admin |
 | `POST` | `/api/webhooks/stripe` | Stripe signature |
 | `GET` | `/health` | public |
@@ -334,6 +385,16 @@ cold start if the service has had no traffic in the last 15 minutes.
 - **Overnight opening hours** must be entered as two same-day windows.
 - **Analytics utilisation** is measured over slots that saw at least one
   booking, not over every slot the opening hours imply.
+- **Locker revenue isn't in `/api/analytics/overview`.** That endpoint
+  aggregates `Booking` only; folding in `LockerBooking` means unioning two
+  collections with different shapes, deferred rather than rushed.
+- **Lowering a locker offering's `capacity` never removes units**, even ones
+  that were never rented. Real capacity can end up higher than what's
+  advertised, but never lower than what's already been committed to a
+  customer — see `lockerService.ensureUnits`.
+- **A locker rental starts immediately** (now, not a future date) and is full
+  price with no proration on early cancellation — same simplicity tradeoff
+  class bookings make.
 - **Graceful shutdown relies on POSIX signals**, so it is inert on Windows,
   where the process is terminated outright. It works on any Linux deployment.
 

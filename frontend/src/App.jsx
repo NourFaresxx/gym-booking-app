@@ -8,6 +8,9 @@ import ResourceDetailPage from './pages/ResourceDetailPage';
 import SelfCarePage from './pages/SelfCarePage';
 import TrainersPage from './pages/TrainersPage';
 import TrainerDetailPage from './pages/TrainerDetailPage';
+import LockersPage from './pages/LockersPage';
+import LockerOfferingDetailPage from './pages/LockerOfferingDetailPage';
+import LockerCheckoutPage from './pages/LockerCheckoutPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import CheckoutPage from './pages/CheckoutPage';
@@ -18,6 +21,8 @@ import AdminClassesPage from './pages/admin/AdminClassesPage';
 import ClassFormPage from './pages/admin/ClassFormPage';
 import AdminTrainersPage from './pages/admin/AdminTrainersPage';
 import TrainerFormPage from './pages/admin/TrainerFormPage';
+import AdminLockersPage from './pages/admin/AdminLockersPage';
+import LockerOfferingFormPage from './pages/admin/LockerOfferingFormPage';
 
 const ADMIN_ROLES = ['staff', 'admin'];
 
@@ -33,6 +38,8 @@ export default function App() {
             <Route path="/self-care" element={<SelfCarePage />} />
             <Route path="/trainers" element={<TrainersPage />} />
             <Route path="/trainers/:id" element={<TrainerDetailPage />} />
+            <Route path="/lockers" element={<LockersPage />} />
+            <Route path="/lockers/:id" element={<LockerOfferingDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route
@@ -40,6 +47,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <CheckoutPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/locker-checkout"
+              element={
+                <ProtectedRoute>
+                  <LockerCheckoutPage />
                 </ProtectedRoute>
               }
             />
@@ -66,6 +81,9 @@ export default function App() {
               <Route path="trainers" element={<AdminTrainersPage />} />
               <Route path="trainers/new" element={<TrainerFormPage />} />
               <Route path="trainers/:id/edit" element={<TrainerFormPage />} />
+              <Route path="lockers" element={<AdminLockersPage />} />
+              <Route path="lockers/new" element={<LockerOfferingFormPage />} />
+              <Route path="lockers/:id/edit" element={<LockerOfferingFormPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

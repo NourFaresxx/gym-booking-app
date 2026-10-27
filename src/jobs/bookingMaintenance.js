@@ -1,7 +1,10 @@
 const Booking = require('../models/Booking');
 const Resource = require('../models/Resource');
 const User = require('../models/User');
+const LockerBooking = require('../models/LockerBooking');
+const LockerOffering = require('../models/LockerOffering');
 const { releaseSlot } = require('../services/slotService');
+const { releaseUnit } = require('../services/lockerService');
 const notifications = require('../services/notificationService');
 const { cancelPaymentIntent } = require('../services/paymentService');
 
@@ -64,10 +67,56 @@ async function completePastBookings(now = new Date()) {
   return { completed: result.modifiedCount };
 }
 
+/** Same purpose as expirePendingBookings, for locker rentals: releases a unit held by checkout that was never completed. */
+async function expirePendingLockerBookings(now = new Date()) {
+  const candidates = await LockerBooking.find({
+    status: 'pending',
+    expiresAt: { $ne: null, $lte: now },
+  }).limit(BATCH_SIZE);
+
+  let expired = 0;
+  for (const candidate of candidates) {
+    const booking = await LockerBooking.findOneAndUpdate(
+      { _id: candidate._id, status: 'pending', expiresAt: { $ne: null, $lte: now } },
+      { status: 'expired', cancelReason: 'payment_not_completed', expiresAt: null },
+      { new: true }
+    );
+    if (!booking) continue;
+
+    await releaseUnit({ unitId: booking.unitId });
+    expired += 1;
+
+    if (booking.stripePaymentIntentId) {
+      try {
+        await cancelPaymentIntent(booking.stripePaymentIntentId);
+      } catch (err) {
+        console.warn(
+          `Could not cancel payment intent for expired locker rental ${booking._id}: ${err.message}`
+        );
+      }
+    }
+
+    await notifyLockerExpired(booking);
+  }
+
+  return { lockersExpired: expired };
+}
+
+/** Moves finished rentals out of `confirmed` so reporting can tell them apart, same as completePastBookings. */
+async function completePastLockerRentals(now = new Date()) {
+  const result = await LockerBooking.updateMany(
+    { status: 'confirmed', rentalEnd: { $lt: now } },
+    { status: 'completed' }
+  );
+  return { lockersCompleted: result.modifiedCount };
+}
+
 async function runOnce(now = new Date()) {
   const expiry = await expirePendingBookings(now);
   const completion = await completePastBookings(now);
-  return { ...expiry, ...completion };
+  const lockerExpiry = await expirePendingLockerBookings(now);
+  const lockerCompletion = await completePastLockerRentals(now);
+  return { ...expiry, ...completion, ...lockerExpiry, ...lockerCompletion };
 }
 
 let timer = null;
@@ -107,4 +156,24 @@ async function notifyExpired(booking) {
   });
 }
 
-module.exports = { start, stop, runOnce, expirePendingBookings, completePastBookings };
+async function notifyLockerExpired(booking) {
+  const [user, offering] = await Promise.all([
+    User.findById(booking.userId).select('name email'),
+    LockerOffering.findById(booking.offeringId).select('name'),
+  ]);
+  await notifications.lockerBookingExpired({
+    user,
+    booking,
+    offeringName: offering?.name || 'your locker rental',
+  });
+}
+
+module.exports = {
+  start,
+  stop,
+  runOnce,
+  expirePendingBookings,
+  completePastBookings,
+  expirePendingLockerBookings,
+  completePastLockerRentals,
+};

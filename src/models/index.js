@@ -7,5 +7,8 @@ module.exports = {
   Trainer: require('./Trainer'),
   Booking: require('./Booking'),
   BookingSlot: require('./BookingSlot'),
+  LockerOffering: require('./LockerOffering'),
+  LockerUnit: require('./LockerUnit'),
+  LockerBooking: require('./LockerBooking'),
   WebhookEvent: require('./WebhookEvent'),
 };

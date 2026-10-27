@@ -104,10 +104,68 @@ function bookingExpired({ user, booking, resourceName }) {
   });
 }
 
+function formatRentalPeriod(booking) {
+  return `${new Date(booking.rentalStart).toUTCString()} – ${new Date(booking.rentalEnd).toUTCString()}`;
+}
+
+function lockerBookingConfirmed({ user, booking, offeringName, unitLabel }) {
+  return send({
+    to: user?.email,
+    subject: `Locker rental confirmed: ${offeringName}`,
+    text: [
+      `Hi ${user?.name || 'there'},`,
+      '',
+      `Your ${booking.tier}ly rental of ${offeringName} is confirmed.`,
+      unitLabel ? `Your locker: ${unitLabel}` : null,
+      `Rental period: ${formatRentalPeriod(booking)}`,
+      `Paid: ${formatMoney(booking.amount, booking.currency)}`,
+      '',
+      `Booking reference: ${booking._id}`,
+    ]
+      .filter((line) => line !== null)
+      .join('\n'),
+  });
+}
+
+function lockerBookingCancelled({ user, booking, offeringName, unitLabel, refunded }) {
+  return send({
+    to: user?.email,
+    subject: `Locker rental cancelled: ${offeringName}`,
+    text: [
+      `Hi ${user?.name || 'there'},`,
+      '',
+      `Your rental of ${offeringName}${unitLabel ? ` (${unitLabel})` : ''} has been cancelled.`,
+      refunded
+        ? `A refund of ${formatMoney(booking.amount, booking.currency)} is on its way back to your original payment method.`
+        : 'No payment was captured, so there is nothing to refund.',
+      '',
+      `Booking reference: ${booking._id}`,
+    ].join('\n'),
+  });
+}
+
+function lockerBookingExpired({ user, booking, offeringName }) {
+  return send({
+    to: user?.email,
+    subject: `Locker hold expired: ${offeringName}`,
+    text: [
+      `Hi ${user?.name || 'there'},`,
+      '',
+      `We held a locker from ${offeringName} but payment wasn't completed in time, so it's been released.`,
+      'You can rent again if lockers are still available.',
+      '',
+      `Booking reference: ${booking._id}`,
+    ].join('\n'),
+  });
+}
+
 module.exports = {
   send,
   isSmtpConfigured,
   bookingConfirmed,
   bookingCancelled,
   bookingExpired,
+  lockerBookingConfirmed,
+  lockerBookingCancelled,
+  lockerBookingExpired,
 };
