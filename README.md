@@ -346,19 +346,6 @@ after 15 minutes of inactivity).
 
 </details>
 
-## Known limitations
-
-- **One refresh token per user** — logging in on a second device signs out the first.
-- **The sweeper assumes a single process.** Multiple instances stay correct
-  (every transition is conditional) but duplicate work; production should use a lock.
-- **Overnight opening hours** must be entered as two same-day windows.
-- **Utilisation** counts only slots that had at least one booking.
-- **Locker revenue isn't in the analytics dashboard yet.**
-- **Lowering a locker offering's capacity never removes units**, so real
-  capacity can exceed what's advertised, but never drop below what's committed.
-- **Locker rentals start immediately** and aren't prorated on early cancellation.
-- **Graceful shutdown uses POSIX signals**, so it's inert on Windows.
-
 ## Author
 
 **Nour Ayman Fares** — [GitHub](https://github.com/NourFaresxx) ·
