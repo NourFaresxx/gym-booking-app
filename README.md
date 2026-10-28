@@ -1,75 +1,181 @@
-# Elite Gym
+# Elite Gym — Full-Stack Gym Booking Platform
 
-A REST API for booking time-limited resources (classes, rooms, equipment) with
-JWT authentication, role-based access control, Stripe payments, and
-concurrency-safe booking that cannot overbook a slot.
+A full-stack booking platform for gym classes, self-care sessions, personal
+trainers and locker rentals. Customers browse, pick a slot and pay with Stripe;
+staff manage everything from an admin dashboard.
+
+The focus is the backend problems most CRUD projects skip: **race-condition-safe
+booking, idempotent payment webhooks, and secure token rotation** — all covered
+by **196 automated tests**.
+
+![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express-000000?logo=express&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![Stripe](https://img.shields.io/badge/Stripe-635BFF?logo=stripe&logoColor=white)
+![Jest](https://img.shields.io/badge/Tests-196%20passing-C21325?logo=jest&logoColor=white)
+
+<!-- Add a live link once deployed:  **Live demo:** https://your-app.onrender.com -->
+
+<p align="center">
+  <img src="docs/screenshots/classes.jpg" alt="Elite Gym — browse classes" />
+</p>
+
+---
+
+## Screenshots
+
+### Customer side
+
+| | |
+| --- | --- |
+| ![Pick a time slot](docs/screenshots/slot-picker.jpg) | ![Stripe checkout](docs/screenshots/checkout.jpg) |
+| **Pick a slot** — live seats left per time | **Stripe checkout** — seat held with a countdown |
+| ![Payment submitted](docs/screenshots/payment-submitted.jpg) | ![My bookings](docs/screenshots/my-bookings.jpg) |
+| **Payment submitted** — confirmed by webhook | **My bookings** — status badges and cancel |
+| ![Trainers](docs/screenshots/trainers.jpg) | ![Trainer profile](docs/screenshots/trainer-profile.jpg) |
+| **Trainers** — searchable by name or specialty | **Trainer profile** — bio and their classes |
+| ![Self care](docs/screenshots/self-care.jpg) | ![Self-care booking](docs/screenshots/self-care-slots.jpg) |
+| **Self care** — spa, sauna and massage | **Weekly availability** from opening hours |
+| ![Lockers](docs/screenshots/lockers.jpg) | ![Locker rental](docs/screenshots/locker-rental.jpg) |
+| **Lockers** — live availability | **Rent by day, month or year** |
+
+### Admin side
+
+| | |
+| --- | --- |
+| ![Admin dashboard](docs/screenshots/admin-dashboard.jpg) | ![Manage classes](docs/screenshots/admin-resources.jpg) |
+| **Dashboard** — bookings, revenue, utilisation | **Classes & self care** — CRUD and deactivate |
+| ![Manage trainers](docs/screenshots/admin-trainers.jpg) | ![Manage lockers](docs/screenshots/admin-lockers.jpg) |
+| **Trainers** management | **Locker offerings** with live availability |
+
+<details>
+<summary>Login</summary>
+
+![Login](docs/screenshots/login.jpg)
+
+</details>
+
+---
+
+## Highlights
+
+- **No overbooking, even under concurrent requests** — capacity is enforced by
+  one atomic conditional update per slot, proven by concurrency tests
+- **Stripe payments with an idempotent webhook** — every seat release happens
+  exactly once, even when Stripe redelivers events
+- **Abandoned checkouts don't leak capacity** — a background sweeper expires
+  unpaid bookings and frees the seat; late payments are refunded automatically
+- **Secure auth** — JWT access + rotating refresh tokens, bcrypt passwords,
+  rate-limited login, role-based access (`admin` / `staff` / `customer`)
+- **Timezone-aware recurring schedules** — slots are generated from weekly
+  opening hours and stay correct across daylight-saving changes
+- **Locker rentals** — day / month / year rentals from a pool of physical units,
+  race-free using a different mechanism than class booking
+- **Admin dashboard** — bookings, revenue, refunds, seat utilisation and top
+  classes, plus full management of classes, trainers and lockers
+- **Documented API** — OpenAPI 3 / Swagger UI at `/api/docs`
+
+## Tech stack
+
+| Layer | Tools |
+| --- | --- |
+| Backend | Node.js, Express, MongoDB, Mongoose |
+| Frontend | React 18, Vite, React Router, Stripe Elements |
+| Auth & security | JWT, bcrypt, Helmet, express-rate-limit, CORS |
+| Payments | Stripe PaymentIntents + webhooks |
+| Validation & docs | Zod, OpenAPI 3 (swagger-jsdoc, Swagger UI) |
+| Email | Nodemailer (SMTP) |
+| Testing | Jest, Supertest, mongodb-memory-server |
+| Deployment | Render Blueprint (`render.yaml`) |
 
 ## Features
 
-- **Auth**: JWT access + refresh tokens (rotated on refresh), bcrypt password hashing, rate-limited credential endpoints
-- **RBAC**: `admin` / `staff` / `customer` roles, plus per-resource ownership checks
-- **Resources**: CRUD with text search, price filtering, pagination, and allow-listed sorting
-- **Recurring availability**: weekly opening hours in the resource's own timezone, expanded into bookable slots on demand — no pre-created slot rows
-- **Bookings**: capacity-safe booking, automatic release of abandoned checkouts, refund on cancellation
-- **Payments**: Stripe PaymentIntents with an idempotent webhook that reconciles bookings against payment outcomes
-- **Analytics**: bookings, revenue, refunds and seat utilisation, scoped by resource ownership
-- **Notifications**: confirmation / cancellation / expiry emails over SMTP, logged instead when SMTP isn't configured
-- **Validation**: Zod schemas on every write endpoint
-- **Docs**: OpenAPI 3 at `/api/docs`, raw spec at `/api/openapi.json`
-- **Lockers**: day/month/year rentals from a pool of interchangeable physical units, race-free on a different mechanism than class booking (see "Why this exists")
-- **Tests**: 196 Jest + Supertest tests, including concurrency, webhook idempotency and capacity-release coverage
+**Customers**
+- Register / log in, browse classes, self-care sessions and trainers
+- Pick an available time slot and pay with Stripe
+- Rent a locker by the day, month or year
+- View and cancel bookings (with automatic refund)
+- Confirmation, cancellation and expiry emails
 
-## Stack
-
-Node.js, Express, MongoDB/Mongoose, JWT, Stripe, Zod, Jest.
+**Staff & admins** (`/admin`)
+- Dashboard: bookings, revenue, refunds, seat utilisation, top classes by revenue
+- Create, edit, deactivate and reactivate classes, trainers and locker offerings
+- Weekly opening-hours editor per class
 
 ## Getting started
 
+**Requirements:** Node.js 18+, a MongoDB replica set (MongoDB Atlas works —
+transactions need a replica set), and a Stripe test account.
+
 ```bash
+# 1. API
 npm install
-cp .env.example .env    # fill in MongoDB URI, two JWT secrets, Stripe keys
-npm run seed            # optional: demo users and resources
-npm run dev
+cp .env.example .env      # MongoDB URI, two JWT secrets, Stripe keys,
+                          # CLIENT_URL=http://localhost:5173
+npm run seed              # optional: demo users and data
+npm run dev               # http://localhost:5000  (docs: /api/docs)
+
+# 2. Frontend (new terminal)
+cd frontend
+npm install
+cp .env.example .env      # API URL + Stripe *publishable* key
+npm run dev               # http://localhost:5173
 ```
 
-API docs: `http://localhost:5000/api/docs`
+**Demo accounts** (after seeding), all with password `password123`:
+`admin@example.com`, `staff@example.com`, `customer@example.com`
 
-The seed script creates `admin@example.com`, `staff@example.com` and
-`customer@example.com`, all with the password `password123`.
+Change a user's role: `npm run promote -- someone@example.com staff`
 
-To change someone's role:
+**Stripe webhooks locally:**
 
 ```bash
-npm run promote -- someone@example.com staff
+stripe listen --forward-to localhost:5000/api/webhooks/stripe
 ```
 
-### Running tests
+Put the printed `whsec_...` value in `STRIPE_WEBHOOK_SECRET`.
+
+> `VITE_STRIPE_PUBLISHABLE_KEY` must come from the *same* Stripe account as the
+> API's `STRIPE_SECRET_KEY`, or the payment form renders empty.
+
+### Tests
 
 ```bash
 npm test
 ```
 
-The suite spins up one in-memory MongoDB replica set for the whole run
-(`mongodb-memory-server`) — no external database needed. A replica set rather
-than a standalone server, because transactions require one.
+196 Jest + Supertest tests, including concurrency, webhook idempotency and
+capacity release. The suite starts an in-memory MongoDB replica set, so no
+external database is needed.
 
-## Why this exists
+## How booking works
 
-Most CRUD-API portfolio projects skip the parts that actually come up in
-backend interviews: race conditions, payment reconciliation, and token
-handling. This project exists to have working, tested code for those.
+```
+GET  /api/resources/:id/availability   → pick a slot where bookable = true
+POST /api/bookings                     → "pending" booking + Stripe clientSecret + expiresAt
+     (customer pays in the browser with Stripe Elements)
+POST /api/webhooks/stripe              → booking becomes "confirmed"
+```
 
-### Overbooking is prevented by a counter, not by a transaction
+If the customer never pays, the sweeper expires the booking and frees the seat.
+All money values are integers in the smallest currency unit (cents).
 
-The obvious approach — count active bookings, insert if under capacity, wrap
-it in a transaction — **does not work**, and the reason is worth knowing.
-MongoDB transactions detect a conflict only when two transactions touch the
-*same document*. Two concurrent requests each inserting a brand-new `Booking`
-never collide, so every request reads the same pre-insert count and they all
-pass the capacity check. The transaction provides no protection at all.
+---
 
-Instead, capacity lives as a counter on a single `BookingSlot` document per
-`(resource, slotStart)`. Reserving a seat is one conditional update:
+## Engineering decisions
+
+### 1. Overbooking is prevented by a counter, not a transaction
+
+The obvious approach — count active bookings, insert if under capacity, wrap it
+in a transaction — **does not work** in MongoDB. Transactions only detect a
+conflict when two of them touch the *same document*. Two concurrent requests
+each inserting a new `Booking` never collide, so both read the same count and
+both pass the capacity check.
+
+Instead, each `(resource, slotStart)` has one `BookingSlot` document holding a
+counter, and reserving a seat is a single conditional update:
 
 ```js
 BookingSlot.findOneAndUpdate(
@@ -78,103 +184,67 @@ BookingSlot.findOneAndUpdate(
 )
 ```
 
-Single-document updates are atomic in MongoDB, so the check and the increment
-cannot interleave. `tests/booking.concurrency.test.js` fires simultaneous
-requests at a 3-seat and a 1-seat slot and asserts the counts hold.
+Single-document updates are atomic, so the check and the increment can't
+interleave. `tests/booking.concurrency.test.js` fires simultaneous requests at
+3-seat and 1-seat slots and asserts the counts hold.
 
-One consequence worth noting: the slot counter document must be created
-*outside* the transaction. Inside one, losing the create race raises a
-duplicate-key error that aborts the whole transaction — and an aborted
-transaction can't be continued, even though the error itself is harmless.
+The counter document is created *outside* the transaction: inside one, losing
+the create race raises a duplicate-key error that aborts the whole transaction.
 
-### Every seat release is exactly-once
+### 2. Every seat release happens exactly once
 
-A seat is freed on cancellation, on payment failure, and on checkout expiry —
-and Stripe delivers webhooks at least once, so each of those can arrive twice.
-Every release is therefore gated on a conditional status transition:
+Seats are freed on cancellation, payment failure and checkout expiry — and
+Stripe delivers webhooks *at least* once. Each release is gated on a
+conditional status change:
 
 ```js
 Booking.findOneAndUpdate({ _id, status: 'pending' }, { status: 'cancelled' })
 ```
 
-Only the caller whose update actually matched goes on to decrement the
-counter. A redelivered event finds the booking already moved and does nothing,
-so the counter can't drift. Webhook event ids are also recorded in a
-deduplication collection, and the `$gt: 0` guard on the decrement is a final
-backstop against a negative count.
+Only the caller whose update matched decrements the counter; a redelivered
+event finds the booking already moved and does nothing. Webhook event IDs are
+also stored in a deduplication collection, and a `$gt: 0` guard on the
+decrement is a final backstop.
 
-### Abandoned checkouts don't leak capacity
+### 3. Abandoned checkouts and late payments
 
-A booking starts as `pending` and holds a seat. If payment is never completed,
-that seat would be held forever — every abandoned checkout permanently
-shrinking the slot. Pending bookings carry an `expiresAt`, and a sweeper
-(`src/jobs/bookingMaintenance.js`) expires them and returns the seat.
+A `pending` booking holds a seat and carries an `expiresAt`. A sweeper
+(`src/jobs/bookingMaintenance.js`) expires unpaid bookings and returns the
+seat. Its transition is conditional too, so a payment confirming at the same
+moment is never expired out from under the customer — and a payment that lands
+*after* expiry is refunded rather than confirming a seat that may have been
+resold.
 
-The sweeper's transition is conditional too, so a payment that confirms in the
-same moment is never expired out from under the customer. And if a payment
-lands *after* expiry, the webhook refunds it rather than confirming a booking
-whose seat may already have been resold.
+Stripe can't take part in a MongoDB transaction, so bookings are confirmed only
+when the webhook reports success, never optimistically.
 
-### Payment reconciliation
+### 4. Refresh-token rotation — and why bcrypt broke it
 
-Stripe can't participate in a MongoDB transaction, so bookings are created
-first and confirmed only when the webhook reports success — never
-optimistically. The one case that needs undoing by hand is a payment intent
-that can't be created at all: there the booking is cancelled and the seat
-released explicitly, because there is no webhook coming to reconcile it.
+Each refresh invalidates the previous token: the stored hash is compared, then
+replaced. The hash is **SHA-256, not bcrypt**. bcrypt ignores everything after
+the first 72 bytes, and a JWT's first 72 bytes (header + start of
+`{"sub":"<user id>`) are identical for every token a user receives — so bcrypt
+couldn't tell them apart and rotation silently did nothing.
+`tests/tokens.test.js` demonstrates the collision.
 
-### Refresh token rotation (and why bcrypt was wrong for it)
+On the frontend, the access token lives in memory only (never `localStorage`,
+where XSS could read it); the client refreshes once transparently on a 401.
 
-Each refresh invalidates the previous refresh token: the stored hash is
-compared, then replaced.
+### 5. Timezone-aware recurring availability
 
-The stored hash is SHA-256, not bcrypt, which matters more than it looks.
-bcrypt ignores everything past the first 72 bytes of its input, and a JWT's
-first 72 bytes are the fixed header plus the beginning of `{"sub":"<user id>`
-— byte-identical for every token that user will ever be issued. bcrypt
-therefore could not distinguish one of a user's refresh tokens from another,
-and rotation silently failed to invalidate anything. bcrypt is also simply the
-wrong tool: its cost exists to slow brute force against low-entropy human
-passwords, while a signed JWT already carries full-strength HMAC entropy.
-Passwords still use bcrypt, capped at 72 bytes so nothing is truncated.
+Slots are generated on demand from weekly opening hours instead of being
+stored, so a schedule is a few rows rather than thousands of documents. Hours
+are wall-clock times in the resource's own IANA timezone, so "Mondays 09:00"
+stays 09:00 across a DST change. `src/utils/timezone.js` does this with `Intl`
+alone — no date library. Bookings are validated against the same generator, so
+an arbitrary timestamp can't be booked.
 
-`tests/tokens.test.js` demonstrates the bcrypt collision directly.
+### 6. Lockers: a different race, a different fix
 
-### Recurring availability
-
-Slots are generated from weekly opening hours rather than stored, so a
-resource's schedule is four rows instead of thousands of slot documents.
-Opening hours are wall-clock times in the resource's own IANA timezone, so
-"Mondays 09:00" stays 09:00 local across a DST change instead of drifting by
-an hour. `src/utils/timezone.js` does this with `Intl` alone, no date library.
-
-Booking validates the requested `slotStart` against the same generator, so an
-arbitrary timestamp can't be booked on a resource that isn't open then.
-
-### Trainers
-
-A `Trainer` is a staff-managed profile (bio, specialties, photo) a client
-reads to decide who to book with — deliberately not tied to a `User` account,
-since not every listed trainer needs a login. A `Resource` optionally links to
-one via `trainerId` ("Pilates Fundamentals" taught by Sarah Chen); booking
-itself is unchanged — "signing up for a trainer" means booking one of their
-classes through the same availability/payment flow every other resource uses,
-not a separate booking subsystem. `GET /api/trainers/:id` returns the profile
-plus their active classes in one response, so the frontend's trainer page
-doesn't have to filter the full resource list client-side.
-
-### Lockers: a different overbooking problem, a different fix
-
-A class booking reserves a point in time (a slot); a locker rental reserves a
-*span* — a day, a month, or a year, starting whenever the customer checks
-out. That's not a smaller version of the slot problem, it's a different one,
-and `BookingSlot`'s counter-per-exact-timestamp trick doesn't apply: there's
-no shared instant for two rentals to collide on.
-
-The fix is the same *idea* as `BookingSlot` — one atomic conditional update
-is what actually prevents the race, not a transaction — aimed at a different
-condition. Each physical locker is its own `LockerUnit` document carrying
-`occupiedUntil`. Claiming one is:
+A class booking reserves a *point in time*; a locker rental reserves a *span*,
+so there's no shared instant to count against. Each physical locker is its own
+`LockerUnit` with an `occupiedUntil` date, and claiming one is still a single
+atomic update:
 
 ```js
 LockerUnit.findOneAndUpdate(
@@ -183,118 +253,40 @@ LockerUnit.findOneAndUpdate(
 )
 ```
 
-"Is this unit free" is "is its occupied-until date in the past", not "is a
-counter under a limit" — but it's still one atomic update on one document, so
-two concurrent rentals racing for the last free unit still can't both win.
-`tests/lockers.test.js` fires simultaneous rentals at a 3-unit and a 1-unit
-pool, same shape as the class-booking concurrency test.
+Everything else — lifecycle, Stripe webhook (routed by a `bookingType`
+metadata tag), sweeper, refunds — reuses the class-booking code.
+`tests/lockers.test.js` runs the same concurrency checks.
 
-Everything downstream reuses what classes already built rather than
-duplicating it: the same pending → confirmed/expired → completed lifecycle,
-the same Stripe webhook endpoint (routed by a `bookingType: 'locker'` tag in
-the payment intent's metadata, with the class-booking code paths completely
-unmodified), the same maintenance sweeper, the same cancellation/refund
-logic. `LockerBooking` is still its own model rather than extra fields bolted
-onto `Booking` — a rental's shape (`unitId`, `tier`, `rentalStart`/`rentalEnd`)
-doesn't overlap cleanly with a class booking's (`resourceId`, `slotStart`),
-and conflating them would mean every query on one carries fields that only
-make sense for the other.
+### Trainers
 
-## Project structure
+A `Trainer` is a staff-managed profile (bio, specialties, photo), deliberately
+not tied to a `User` account. A class optionally links to a trainer, so booking
+a trainer means booking one of their classes through the normal flow.
+`GET /api/trainers/:id` returns the profile plus their active classes.
 
-```
-src/
-  config/       # db connection, OpenAPI spec
-  controllers/  # route handlers
-  jobs/         # pending-booking expiry and completion sweeper
-  middleware/   # auth, validation, error handling
-  models/       # Mongoose schemas
-  routes/       # Express routers + OpenAPI annotations
-  schemas/      # Zod validation schemas
-  services/     # slots, availability, payments, notifications
-  utils/        # tokens, timezone maths
-scripts/        # seed, promoteUser
-tests/
-frontend/       # React + Vite customer web app (see below)
-```
-
-## Frontend
-
-`frontend/` is a React + Vite app covering both sides of the product:
-
-- **Customer flow**: register/log in, browse resources and trainers, pick an
-  available slot, pay with Stripe Elements, and view/cancel bookings. Browse
-  (`/`) and Self Care (`/self-care`) are the same `Resource` collection split
-  by a `category` field (`classes` vs. `self-care`) — a spa session and a
-  CrossFit class are the same document shape, just grouped differently.
-- **Lockers** (`/lockers`): day/month/year rentals, same checkout flow as a
-  class, under `My bookings → Lockers`.
-- **Admin flow** (`/admin`, staff/admin only — the nav link only appears for
-  those roles, and the route redirects anyone else back to Classes): a
-  dashboard (bookings, revenue, refunds, seat utilisation, top classes by
-  revenue), and CRUD for classes, trainers, and locker offerings, including
-  reactivating something you'd previously deactivated. Locker revenue isn't
-  in the dashboard yet — see Notes and limitations.
-
-The admin UI's "show inactive" toggle depends on a backend addition that
-isn't obvious from the API routes alone: `GET /resources` and `GET
-/trainers` accept an `includeInactive=true` query param, but it's silently
-ignored unless the caller is authenticated as staff/admin — a public/
-customer request to that same URL with that same query string always gets
-active-only results, regardless of what it asks for.
-
-```bash
-cd frontend
-npm install
-cp .env.example .env    # API URL + Stripe PUBLISHABLE key
-npm run dev              # http://localhost:5173
-```
-
-Also set `CLIENT_URL=http://localhost:5173` in the API's own `.env` so CORS
-allows the dev server to call it.
-
-Notes:
-
-- The access token lives in memory only (never `localStorage`); only the
-  refresh token is persisted, and the client transparently refreshes once on
-  a 401. A reload always costs one 401-then-refresh round trip by design —
-  there's no way to know the in-memory token is stale without trying it, and
-  persisting it to survive reloads would mean keeping it somewhere an XSS
-  payload could read it.
-- `VITE_STRIPE_PUBLISHABLE_KEY` must be the publishable key from the *same*
-  Stripe account as the API's `STRIPE_SECRET_KEY`, or Stripe Elements will
-  mount but silently fail to render actual payment fields.
+---
 
 ## API overview
 
+Full interactive docs at `/api/docs` (raw spec: `/api/openapi.json`).
+
 | Method | Path | Access |
 | --- | --- | --- |
-| `POST` | `/api/auth/register` | public |
-| `POST` | `/api/auth/login` | public |
-| `POST` | `/api/auth/refresh` | public |
-| `GET` | `/api/auth/me` | authenticated |
-| `POST` | `/api/auth/logout` | authenticated |
-| `GET` | `/api/resources` | public |
-| `GET` | `/api/resources/:id` | public |
-| `GET` | `/api/resources/:id/availability` | public |
+| `POST` | `/api/auth/register` · `/login` · `/refresh` | public |
+| `GET` / `POST` | `/api/auth/me` · `/logout` | authenticated |
+| `GET` | `/api/resources`, `/:id`, `/:id/availability` | public |
 | `POST` | `/api/resources` | staff, admin |
-| `PATCH` | `/api/resources/:id` | owner, admin |
-| `DELETE` | `/api/resources/:id` | owner, admin |
-| `GET` | `/api/trainers` | public |
-| `GET` | `/api/trainers/:id` | public |
-| `POST` | `/api/trainers` | staff, admin |
-| `PATCH` | `/api/trainers/:id` | staff, admin |
-| `DELETE` | `/api/trainers/:id` | staff, admin |
+| `PATCH` / `DELETE` | `/api/resources/:id` | owner, admin |
+| `GET` | `/api/trainers`, `/:id` | public |
+| `POST` / `PATCH` / `DELETE` | `/api/trainers[/:id]` | staff, admin |
 | `POST` | `/api/bookings` | authenticated |
 | `GET` | `/api/bookings/me` | authenticated |
 | `GET` | `/api/bookings/:id` | owner, staff, admin |
 | `PATCH` | `/api/bookings/:id/cancel` | owner, staff, admin |
 | `GET` | `/api/bookings` | staff, admin |
-| `GET` | `/api/lockers` | public |
-| `GET` | `/api/lockers/:id` | public |
+| `GET` | `/api/lockers`, `/:id` | public |
 | `POST` | `/api/lockers` | staff, admin |
-| `PATCH` | `/api/lockers/:id` | owner, admin |
-| `DELETE` | `/api/lockers/:id` | owner, admin |
+| `PATCH` / `DELETE` | `/api/lockers/:id` | owner, admin |
 | `POST` | `/api/locker-bookings` | authenticated |
 | `GET` | `/api/locker-bookings/me` | authenticated |
 | `GET` | `/api/locker-bookings/:id` | owner, staff, admin |
@@ -304,103 +296,70 @@ Notes:
 | `POST` | `/api/webhooks/stripe` | Stripe signature |
 | `GET` | `/health` | public |
 
-All money values are integers in the minor currency unit (cents).
+`GET /resources` and `GET /trainers` accept `includeInactive=true`, honoured
+only for staff/admin callers.
 
-### Booking flow
+## Project structure
 
-1. `GET /api/resources/:id/availability` → pick a slot with `bookable: true`
-2. `POST /api/bookings` with that slot's `start` → `pending` booking + `clientSecret` + `expiresAt`
-3. Confirm the payment client-side with the `clientSecret`
-4. Stripe calls `POST /api/webhooks/stripe` → booking becomes `confirmed`
-
-If step 3 never happens, the sweeper expires the booking and frees the seat.
-
-### Local webhook testing
-
-```bash
-stripe listen --forward-to localhost:5000/api/webhooks/stripe
 ```
-
-Put the printed `whsec_...` value in `STRIPE_WEBHOOK_SECRET`.
+src/
+  config/       # DB connection, OpenAPI spec
+  controllers/  # route handlers
+  jobs/         # pending-booking expiry + completion sweeper
+  middleware/   # auth, validation, error handling
+  models/       # Mongoose schemas
+  routes/       # Express routers + OpenAPI annotations
+  schemas/      # Zod validation schemas
+  services/     # slots, availability, lockers, payments, notifications
+  utils/        # tokens, timezone maths
+scripts/        # seed, promoteUser
+tests/          # Jest + Supertest suites
+frontend/       # React + Vite web app (customer + admin)
+render.yaml     # one-click Render deployment
+```
 
 ## Deployment
 
+<details>
+<summary>Deploy free on Render (API + frontend)</summary>
+
 `render.yaml` is a [Render Blueprint](https://render.com/docs/blueprint-spec)
-that deploys the API and the frontend together, both on Render's free tier —
-no credit card required, $0 unless you blow far past the generous
-free bandwidth/build-minute limits. The only cost of "free" is a ~1 minute
-cold start if the service has had no traffic in the last 15 minutes.
+that deploys both services on the free tier (expect a ~1 minute cold start
+after 15 minutes of inactivity).
 
-1. On [render.com](https://render.com), **New → Blueprint**, select this
-   repo. Render finds `render.yaml` automatically and shows two services:
-   `rehab-sporting-club-api` and `rehab-sporting-club-web`.
-2. Fill in the prompted secrets (these are typed into Render's dashboard,
-   never committed to the repo):
-   - `MONGODB_URI` — same Atlas connection string as local
-   - `STRIPE_SECRET_KEY` — your `sk_test_...` key
-   - `STRIPE_WEBHOOK_SECRET` — a placeholder for now (e.g. `whsec_pending`);
-     production needs its own webhook endpoint, set up in step 5
-   - `CLIENT_URL` on the API, and `VITE_API_URL` on the frontend — also
-     placeholders for now (e.g. `https://pending.example.com`); neither
-     service's real `onrender.com` URL exists until it has deployed once,
-     so this is a chicken-and-egg problem solved by step 4
-   - `VITE_STRIPE_PUBLISHABLE_KEY` — your real `pk_test_...` key (safe to
-     set correctly now; it's meant to be public)
-   - `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` are generated for you
-3. Deploy. Both services build; note their real URLs once live
-   (`https://rehab-sporting-club-api.onrender.com`,
-   `https://rehab-sporting-club-web.onrender.com` — Render appends a random
-   suffix instead if either name is already taken).
-4. Go back and fix the two placeholders with the real URLs:
-   - API's `CLIENT_URL` → the frontend's URL
-   - Frontend's `VITE_API_URL` → the API's URL + `/api`
+1. On render.com: **New → Blueprint** → select this repo.
+2. Fill in the prompted secrets: `MONGODB_URI`, `STRIPE_SECRET_KEY`,
+   `VITE_STRIPE_PUBLISHABLE_KEY`. Use placeholders for now for
+   `STRIPE_WEBHOOK_SECRET`, `CLIENT_URL` and `VITE_API_URL`. JWT secrets are
+   generated for you.
+3. Deploy, then note both services' real URLs.
+4. Set the API's `CLIENT_URL` to the frontend URL, and the frontend's
+   `VITE_API_URL` to the API URL + `/api`. Redeploy both (Vite bakes `VITE_*`
+   values in at build time).
+5. In MongoDB Atlas → Network Access, allow `0.0.0.0/0` (Render's free tier has
+   no fixed outbound IP).
+6. In the Stripe Dashboard, add a webhook endpoint for
+   `https://<your-api>.onrender.com/api/webhooks/stripe` listening for
+   `payment_intent.succeeded`, `payment_intent.payment_failed`,
+   `payment_intent.canceled` and `charge.refunded`. Put its signing secret in
+   `STRIPE_WEBHOOK_SECRET` and redeploy the API.
 
-   Then redeploy both manually. This matters most for the frontend: Vite
-   bakes `VITE_*` values in at *build* time, so a stale `VITE_API_URL`
-   silently keeps pointing at the placeholder until the next build, not just
-   the next restart.
-5. **MongoDB Atlas network access**: Render's free tier has no fixed
-   outbound IP, so add `0.0.0.0/0` under Atlas → Network Access (same fix as
-   the "IP not whitelisted" error in local dev, just permanent this time
-   since the IP genuinely varies).
-6. **Production Stripe webhook**: `stripe listen` is dev-only. In the
-   [Stripe Dashboard](https://dashboard.stripe.com/test/webhooks), add an
-   endpoint for `https://<your-api>.onrender.com/api/webhooks/stripe`
-   listening for `payment_intent.succeeded`, `payment_intent.payment_failed`,
-   `payment_intent.canceled`, and `charge.refunded` — the same four events
-   `src/controllers/webhookController.js` handles. Copy the endpoint's
-   signing secret into `STRIPE_WEBHOOK_SECRET` on Render, replacing the
-   placeholder, and redeploy the API.
+</details>
 
-## Notes and limitations
+## Known limitations
 
-- **Transactions need a replica set.** MongoDB Atlas provides one; a bare
-  local `mongod` does not.
-- **One refresh token per user.** Logging in on a second device invalidates the
-  first. Supporting concurrent sessions means storing a set of token hashes.
-- **The maintenance sweeper assumes a single process.** Several instances
-  behind a load balancer would each sweep. That stays *correct*, because every
-  transition is a conditional update, but it duplicates work; a real
-  deployment should elect one scheduler or take a lock.
+- **One refresh token per user** — logging in on a second device signs out the first.
+- **The sweeper assumes a single process.** Multiple instances stay correct
+  (every transition is conditional) but duplicate work; production should use a lock.
 - **Overnight opening hours** must be entered as two same-day windows.
-- **Analytics utilisation** is measured over slots that saw at least one
-  booking, not over every slot the opening hours imply.
-- **Locker revenue isn't in `/api/analytics/overview`.** That endpoint
-  aggregates `Booking` only; folding in `LockerBooking` means unioning two
-  collections with different shapes, deferred rather than rushed.
-- **Lowering a locker offering's `capacity` never removes units**, even ones
-  that were never rented. Real capacity can end up higher than what's
-  advertised, but never lower than what's already been committed to a
-  customer — see `lockerService.ensureUnits`.
-- **A locker rental starts immediately** (now, not a future date) and is full
-  price with no proration on early cancellation — same simplicity tradeoff
-  class bookings make.
-- **Graceful shutdown relies on POSIX signals**, so it is inert on Windows,
-  where the process is terminated outright. It works on any Linux deployment.
+- **Utilisation** counts only slots that had at least one booking.
+- **Locker revenue isn't in the analytics dashboard yet.**
+- **Lowering a locker offering's capacity never removes units**, so real
+  capacity can exceed what's advertised, but never drop below what's committed.
+- **Locker rentals start immediately** and aren't prorated on early cancellation.
+- **Graceful shutdown uses POSIX signals**, so it's inert on Windows.
 
-## Possible extensions
+## Author
 
-- Per-session refresh tokens so multiple devices can stay logged in
-- Waitlists: offer a freed seat to the next person in line
-- Recurring bookings ("every Monday for 8 weeks")
-- Move the sweeper to a locked or external scheduler for multi-instance deploys
+**Nour Ayman Fares** — [GitHub](https://github.com/NourFaresxx) ·
+[LinkedIn](https://linkedin.com/in/nour-ayman-fares)
