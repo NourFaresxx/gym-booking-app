@@ -17,7 +17,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <Link to="/" className="nav-brand">
         <BrandMark className="nav-brand-mark" />
-        Rehab Sporting Club Gym
+        Elite Gym
       </Link>
 
       <nav className="nav-links">

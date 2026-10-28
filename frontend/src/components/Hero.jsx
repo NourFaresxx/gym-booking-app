@@ -2,7 +2,6 @@ export default function Hero({ search, onSearchChange, classCount, trainerCount 
   return (
     <section className="hero">
       <div className="hero-content">
-        <span className="hero-eyebrow">Studio booking</span>
         <h1>Book your next class in seconds</h1>
         <p>
           Browse classes and the trainers who teach them, pick a time that works, and pay
